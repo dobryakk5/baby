@@ -44,8 +44,8 @@ def get_today_display_format():
 def get_main_keyboard():
     builder = ReplyKeyboardBuilder()
     builder.button(text="🌡 Добавить температуру")
-    builder.button(text="💧 Добавить слизь")
-    builder.button(text="🩸 Добавить менструацию")
+    builder.button(text="💧 Выделения")
+    builder.button(text="🔹 Шейка матки")
     builder.button(text="📝 Добавить заметку")
     builder.button(text="📊 Просмотр данных")
     builder.button(text="🔄 Новый цикл")
@@ -70,7 +70,7 @@ async def command_start_handler(message: Message):
             "Я ваш помощник по отслеживанию фертильности на основе симптотермального метода.\n\n"
             "Я могу помочь вам отслеживать:\n"
             "🔹 Базальную температуру тела (БТТ)\n"
-            "🔹 Цервикальную слизь\n"
+            "🔹 Выделения\n"
             "🔹 Положение шейки матки\n"
             "🔹 Менструацию\n"
             "🔹 Другие наблюдения\n\n"
@@ -92,7 +92,7 @@ async def command_help_handler(message: Message):
             "/start - Запустить бота\n"
             "/help - Показать эту справку\n"
             "/add_temperature - Добавить сегодняшнюю базальную температуру тела\n"
-            "/add_mucus - Добавить наблюдение за цервикальной слизью\n"
+            "/add_discharge - Добавить выделения\n"
             "/add_cervix - Добавить наблюдение за положением шейки матки\n"
             "/add_menstruation - Добавить данные о менструации\n"
             "/add_note - Добавить другие наблюдения\n"
@@ -101,7 +101,7 @@ async def command_help_handler(message: Message):
             "/reset_cycle - Начать новый цикл\n\n"
             "Симптотермальный метод помогает определить ваше фертильное окно путем отслеживания:\n"
             "1. Базальной температуры тела (измеряется каждое утро)\n"
-            "2. Наблюдений за цервикальной слизью\n"
+            "2. Наблюдений за выделениями\n"
             "3. Положения шейки матки (опционально)"
         )
         await message.answer(help_text, reply_markup=get_main_keyboard())
@@ -154,7 +154,10 @@ async def handle_temperature_input(message: Message):
                         mucus_type=record.get('mucus_type'),
                         menstruation_type=record.get('menstruation_type'),
                         cervical_position=record.get('cervical_position'),
-                        note=record.get('note')
+                        note=record.get('note'),
+                        abdominal_pain=record.get('abdominal_pain'),
+                        breast_tenderness=record.get('breast_tenderness'),
+                        intercourse=record.get('intercourse')
                     )
                 else:
                     logging.debug(f"Creating new record for user {user_id}")
@@ -181,96 +184,92 @@ async def handle_temperature_input(message: Message):
         import traceback
         logging.error(f"Traceback: {traceback.format_exc()}")
 
-# Обработчик кнопки клавиатуры для слизи
-@dp.message(F.text == "💧 Добавить слизь")
-async def handle_mucus_button(message: Message):
+# Обработчик кнопки клавиатуры для выделений
+@dp.message(F.text == "💧 Выделения")
+async def handle_discharge_button(message: Message):
     try:
-        # Создание инлайн-клавиатуры для типов слизи
+        # Создание инлайн-клавиатуры для типов выделений
         builder = InlineKeyboardBuilder()
-        builder.button(text="Сухо", callback_data="mucus_dry")
-        builder.button(text="Липкое", callback_data="mucus_sticky")
-        builder.button(text="Кремообразное", callback_data="mucus_creamy")
-        builder.button(text="Водянистое", callback_data="mucus_watery")
-        builder.button(text="Слизь", callback_data="mucus_eggwhite")
-        builder.button(text="Другое", callback_data="mucus_other")
+        builder.button(text="Менструация", callback_data="discharge_menstruation")
+        builder.button(text="Сухо", callback_data="discharge_dry")
+        builder.button(text="Влажно", callback_data="discharge_wet")
+        builder.button(text="Мокро", callback_data="discharge_moist")
         builder.adjust(2)
         
-        await message.answer("Выберите тип цервикальной слизи:", reply_markup=builder.as_markup())
+        await message.answer("Выберите тип выделений:", reply_markup=builder.as_markup())
     except TelegramForbiddenError:
         logging.warning(f"Пользователь {message.from_user.id} заблокировал бота")
     except Exception as e:
-        logging.error(f"Ошибка в обработчике кнопки слизи: {e}")
+        logging.error(f"Ошибка в обработчике кнопки выделений: {e}")
 
-# Обработчик выбора слизи
-@dp.callback_query(lambda c: c.data.startswith("mucus_"))
-async def handle_mucus_selection(callback_query: CallbackQuery):
+
+# Обработчик выбора выделений
+@dp.callback_query(lambda c: c.data.startswith("discharge_"))
+async def handle_discharge_selection(callback_query: CallbackQuery):
     try:
         user_id = callback_query.from_user.id
-        mucus_type = callback_query.data.split("_")[1]
-        mucus_descriptions = {
-            "dry": "Сухо",
-            "sticky": "Липкое",
-            "creamy": "Кремообразное",
-            "watery": "Водянистое",
-            "eggwhite": "Слизь",
-            "other": "Другое"
-        }
+        discharge_type = callback_query.data.split("_")[1]
         
         today_db = get_today_db_format()  # Формат для БД
         today_display = get_today_display_format()  # Формат для отображения
-        logging.debug(f"Processing mucus selection for user {user_id} on date {today_db}")
+        logging.debug(f"Processing discharge selection for user {user_id} on date {today_db}")
         
         # Получение существующей записи или создание новой
         record = await db.get_record_by_date(user_id, today_db)
-        if record:
-            logging.debug(f"Updating existing record for user {user_id}")
-            # Обновление существующей записи
-            await db.create_record(
-                user_id=user_id,
-                record_date=today_db,
-                temperature=record.get('temperature'),
-                mucus_type=mucus_descriptions[mucus_type],
-                menstruation_type=record.get('menstruation_type'),
-                cervical_position=record.get('cervical_position'),
-                note=record.get('note')
-            )
-        else:
-            logging.debug(f"Creating new record for user {user_id}")
-            # Создание новой записи
-            await db.create_record(
-                user_id=user_id,
-                record_date=today_db,
-                mucus_type=mucus_descriptions[mucus_type]
-            )
         
-        await callback_query.message.edit_text(f"✅ Цервикальная слизь '{mucus_descriptions[mucus_type]}' записана на {today_display}")
+        if discharge_type == "menstruation":
+            # Если выбрана менструация, показываем дополнительные опции
+            builder = InlineKeyboardBuilder()
+            builder.button(text="Слабые", callback_data="menstruation_light")
+            builder.button(text="Средние", callback_data="menstruation_medium")
+            builder.button(text="Обильные", callback_data="menstruation_heavy")
+            builder.button(text="Мажущие", callback_data="menstruation_spotting")
+            builder.adjust(2)
+            
+            await callback_query.message.edit_text("Выберите тип менструации:", reply_markup=builder.as_markup())
+        else:
+            # Обработка типов слизи
+            discharge_descriptions = {
+                "dry": "Сухо",
+                "wet": "Влажно", 
+                "moist": "Мокро"
+            }
+            
+            if record:
+                logging.debug(f"Updating existing record for user {user_id}")
+                # Обновление существующей записи
+                await db.create_record(
+                    user_id=user_id,
+                    record_date=today_db,
+                    temperature=record.get('temperature'),
+                    mucus_type=discharge_descriptions[discharge_type],
+                    menstruation_type=record.get('menstruation_type'),
+                    cervical_position=record.get('cervical_position'),
+                    note=record.get('note'),
+                    abdominal_pain=record.get('abdominal_pain'),
+                    breast_tenderness=record.get('breast_tenderness'),
+                    intercourse=record.get('intercourse')
+                )
+            else:
+                logging.debug(f"Creating new record for user {user_id}")
+                # Создание новой записи
+                await db.create_record(
+                    user_id=user_id,
+                    record_date=today_db,
+                    mucus_type=discharge_descriptions[discharge_type]
+                )
+            
+            await callback_query.message.edit_text(f"✅ Выделения '{discharge_descriptions[discharge_type]}' записаны на {today_display}")
+        
         await callback_query.answer()
     except TelegramForbiddenError:
         logging.warning(f"Пользователь {callback_query.from_user.id} заблокировал бота")
     except Exception as e:
-        logging.error(f"Ошибка при обработке выбора слизи: {e}")
+        logging.error(f"Ошибка при обработке выбора выделений: {e}")
         import traceback
         logging.error(f"Traceback: {traceback.format_exc()}")
 
-# Обработчик кнопки клавиатуры для менструации
-@dp.message(F.text == "🩸 Добавить менструацию")
-async def handle_menstruation_button(message: Message):
-    try:
-        # Создание инлайн-клавиатуры для типов менструации
-        builder = InlineKeyboardBuilder()
-        builder.button(text="Слабые", callback_data="menstruation_light")
-        builder.button(text="Средние", callback_data="menstruation_medium")
-        builder.button(text="Обильные", callback_data="menstruation_heavy")
-        builder.button(text="Мажущие", callback_data="menstruation_spotting")
-        builder.adjust(2)
-        
-        await message.answer("Выберите тип менструации:", reply_markup=builder.as_markup())
-    except TelegramForbiddenError:
-        logging.warning(f"Пользователь {message.from_user.id} заблокировал бота")
-    except Exception as e:
-        logging.error(f"Ошибка в обработчике кнопки менструации: {e}")
-
-# Обработчик выбора менструации
+# Обработчик выбора менструации (для обратной совместимости)
 @dp.callback_query(lambda c: c.data.startswith("menstruation_"))
 async def handle_menstruation_selection(callback_query: CallbackQuery):
     try:
@@ -299,7 +298,10 @@ async def handle_menstruation_selection(callback_query: CallbackQuery):
                 mucus_type=record.get('mucus_type'),
                 menstruation_type=menstruation_descriptions[menstruation_type],
                 cervical_position=record.get('cervical_position'),
-                note=record.get('note')
+                note=record.get('note'),
+                abdominal_pain=record.get('abdominal_pain'),
+                breast_tenderness=record.get('breast_tenderness'),
+                intercourse=record.get('intercourse')
             )
         else:
             logging.debug(f"Creating new record for user {user_id}")
@@ -319,35 +321,75 @@ async def handle_menstruation_selection(callback_query: CallbackQuery):
         import traceback
         logging.error(f"Traceback: {traceback.format_exc()}")
 
-# Обработчик кнопки клавиатуры для заметок
-@dp.message(F.text == "📝 Добавить заметку")
-async def handle_note_button(message: Message):
+# Обработчик кнопки клавиатуры для шейки матки
+@dp.message(F.text == "🔹 Шейка матки")
+async def handle_cervix_button(message: Message):
     try:
-        await message.answer("Пожалуйста, введите вашу заметку:")
-        # Установка состояния ожидания ввода заметки
-        user_id = message.from_user.id
-        # Хранение состояния в простом словаре (в production можно использовать FSM)
-        if not hasattr(dp, 'note_input_state'):
-            dp.note_input_state = {}
-        dp.note_input_state[user_id] = True
+        # Создание инлайн-клавиатуры для позиции шейки матки (первый уровень)
+        builder = InlineKeyboardBuilder()
+        builder.button(text="Низко", callback_data="cervix_low")
+        builder.button(text="Высоко", callback_data="cervix_high")
+        builder.adjust(2)
+        
+        await message.answer("Выберите позицию шейки матки:", reply_markup=builder.as_markup())
     except TelegramForbiddenError:
         logging.warning(f"Пользователь {message.from_user.id} заблокировал бота")
     except Exception as e:
-        logging.error(f"Ошибка в обработчике кнопки заметки: {e}")
+        logging.error(f"Ошибка в обработчике кнопки шейки матки: {e}")
 
-# Обработчик ввода заметки
-@dp.message(lambda message: hasattr(dp, 'note_input_state') and 
-                           message.from_user.id in dp.note_input_state and 
-                           dp.note_input_state[message.from_user.id])
-async def handle_note_input(message: Message):
+# Обработчик выбора позиции шейки матки (первый уровень)
+@dp.callback_query(lambda c: c.data.startswith("cervix_"))
+async def handle_cervix_position_selection(callback_query: CallbackQuery):
     try:
-        user_id = message.from_user.id
-        note = message.text
+        position = callback_query.data.split("_")[1]  # low или high
         
-        # Добавление заметки в базу данных
+        # Создание инлайн-клавиатуры для состояния шейки матки (второй уровень)
+        builder = InlineKeyboardBuilder()
+        builder.button(text="Закрыта", callback_data=f"cervix_state_{position}_closed")
+        builder.button(text="Открыта", callback_data=f"cervix_state_{position}_open")
+        builder.adjust(2)
+        
+        position_text = "низко" if position == "low" else "высоко"
+        await callback_query.message.edit_text(
+            f"Шейка матки {position_text}. Выберите состояние:", 
+            reply_markup=builder.as_markup()
+        )
+        await callback_query.answer()
+    except TelegramForbiddenError:
+        logging.warning(f"Пользователь {callback_query.from_user.id} заблокировал бота")
+    except Exception as e:
+        logging.error(f"Ошибка при обработке выбора позиции шейки матки: {e}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
+
+# Обработчик выбора состояния шейки матки (второй уровень)
+@dp.callback_query(lambda c: c.data.startswith("cervix_state_"))
+async def handle_cervix_state_selection(callback_query: CallbackQuery):
+    try:
+        user_id = callback_query.from_user.id
+        parts = callback_query.data.split("_")  # cervix_state_position_state
+        position = parts[2]  # low или high
+        state = parts[3]     # closed или open
+        
+        # Кодирование согласно требованию:
+        # 1 - высоко открыта, 2 - высоко закрыта, 3 - низко открыта, 4 - низко закрыта
+        cervix_codes = {
+            "high_open": 1,    # высоко открыта
+            "high_closed": 2,  # высоко закрыта  
+            "low_open": 3,     # низко открыта
+            "low_closed": 4    # низко закрыта
+        }
+        
+        code_key = f"{position}_{state}"
+        cervical_position_code = cervix_codes[code_key]
+        
+        # Создание описания для пользователя
+        position_text = "высоко" if position == "high" else "низко"
+        state_text = "открыта" if state == "open" else "закрыта"
+        
         today_db = get_today_db_format()  # Формат для БД
         today_display = get_today_display_format()  # Формат для отображения
-        logging.debug(f"Processing note input for user {user_id} on date {today_db}")
+        logging.debug(f"Processing cervix selection for user {user_id} on date {today_db}")
         
         # Получение существующей записи или создание новой
         record = await db.get_record_by_date(user_id, today_db)
@@ -360,8 +402,8 @@ async def handle_note_input(message: Message):
                 temperature=record.get('temperature'),
                 mucus_type=record.get('mucus_type'),
                 menstruation_type=record.get('menstruation_type'),
-                cervical_position=record.get('cervical_position'),
-                note=note
+                cervical_position=cervical_position_code,
+                note=record.get('note')
             )
         else:
             logging.debug(f"Creating new record for user {user_id}")
@@ -369,18 +411,89 @@ async def handle_note_input(message: Message):
             await db.create_record(
                 user_id=user_id,
                 record_date=today_db,
-                note=note
+                cervical_position=cervical_position_code
             )
         
-        await message.answer(f"✅ Заметка записана на {today_display}", reply_markup=get_main_keyboard())
+        await callback_query.message.edit_text(
+            f"✅ Шейка матки '{position_text} {state_text}' записана на {today_display}"
+        )
+        await callback_query.answer()
+    except TelegramForbiddenError:
+        logging.warning(f"Пользователь {callback_query.from_user.id} заблокировал бота")
+    except Exception as e:
+        logging.error(f"Ошибка при обработке выбора состояния шейки матки: {e}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
+
+# Обработчик кнопки клавиатуры для заметок
+@dp.message(F.text == "📝 Добавить заметку")
+async def handle_note_button(message: Message):
+    try:
+        # Создание инлайн-клавиатуры для типов заметок
+        builder = InlineKeyboardBuilder()
+        builder.button(text="😢 Боли/вздутие живота", callback_data="note_abdominal_pain")
+        builder.button(text="🤱 Напряжение в груди", callback_data="note_breast_tenderness")
+        builder.button(text="💕 Супружеская близость", callback_data="note_intercourse")
+        builder.adjust(1)
         
-        # Сброс состояния ввода
-        if hasattr(dp, 'note_input_state') and user_id in dp.note_input_state:
-            del dp.note_input_state[user_id]
+        await message.answer("Выберите тип заметки:", reply_markup=builder.as_markup())
     except TelegramForbiddenError:
         logging.warning(f"Пользователь {message.from_user.id} заблокировал бота")
     except Exception as e:
-        logging.error(f"Ошибка при обработке ввода заметки: {e}")
+        logging.error(f"Ошибка в обработчике кнопки заметки: {e}")
+
+# Обработчик выбора типа заметки
+@dp.callback_query(lambda c: c.data.startswith("note_"))
+async def handle_note_selection(callback_query: CallbackQuery):
+    try:
+        user_id = callback_query.from_user.id
+        note_type = callback_query.data.split("_")[1]  # abdominal_pain, breast_tenderness, intercourse
+        
+        today_db = get_today_db_format()  # Формат для БД
+        today_display = get_today_display_format()  # Формат для отображения
+        logging.debug(f"Processing note selection for user {user_id} on date {today_db}")
+        
+        # Определяем, какое поле обновлять
+        note_fields = {
+            "abdominal_pain": ("abdominal_pain", "😢 Боли/вздутие живота"),
+            "breast_tenderness": ("breast_tenderness", "🤱 Напряжение в груди"),
+            "intercourse": ("intercourse", "💕 Супружеская близость")
+        }
+        
+        field_name, field_description = note_fields[note_type]
+        
+        # Получение существующей записи или создание новой
+        record = await db.get_record_by_date(user_id, today_db)
+        
+        # Подготовка параметров для обновления
+        update_params = {
+            "user_id": user_id,
+            "record_date": today_db,
+            "temperature": record.get('temperature') if record else None,
+            "mucus_type": record.get('mucus_type') if record else None,
+            "menstruation_type": record.get('menstruation_type') if record else None,
+            "cervical_position": record.get('cervical_position') if record else None,
+            "note": record.get('note') if record else None,
+            "abdominal_pain": record.get('abdominal_pain') if record else None,
+            "breast_tenderness": record.get('breast_tenderness') if record else None,
+            "intercourse": record.get('intercourse') if record else None
+        }
+        
+        # Обновляем конкретное поле
+        update_params[field_name] = True
+        
+        # Сохраняем в базу данных
+        await db.create_record(**update_params)
+        
+        await callback_query.message.edit_text(
+            f"✅ Отмечено: {field_description} на {today_display}"
+        )
+        await callback_query.answer()
+        
+    except TelegramForbiddenError:
+        logging.warning(f"Пользователь {callback_query.from_user.id} заблокировал бота")
+    except Exception as e:
+        logging.error(f"Ошибка при обработке выбора типа заметки: {e}")
         import traceback
         logging.error(f"Traceback: {traceback.format_exc()}")
 
@@ -407,9 +520,26 @@ async def handle_view_data_button(message: Message):
             if record['temperature']:
                 data_text += f"🌡 Температура: {record['temperature']}°C\n"
             if record['mucus_type']:
-                data_text += f"💧 Слизь: {record['mucus_type']}\n"
+                data_text += f"💧 Выделения: {record['mucus_type']}\n"
             if record['menstruation_type']:
-                data_text += f"🩸 Менструация: {record['menstruation_type']}\n"
+                data_text += f"💧 Выделения: {record['menstruation_type']}\n"
+            if record['cervical_position']:
+                # Декодирование позиции шейки матки
+                cervix_descriptions = {
+                    1: "высоко открыта",
+                    2: "высоко закрыта", 
+                    3: "низко открыта",
+                    4: "низко закрыта"
+                }
+                cervix_text = cervix_descriptions.get(record['cervical_position'], f"код {record['cervical_position']}")
+                data_text += f"🔹 Шейка матки: {cervix_text}\n"
+            # Отображение специальных заметок
+            if record.get('abdominal_pain'):
+                data_text += f"😢 Боли/вздутие живота\n"
+            if record.get('breast_tenderness'):
+                data_text += f"🤱 Напряжение в груди\n"
+            if record.get('intercourse'):
+                data_text += f"💕 Супружеская близость\n"
             if record['note']:
                 data_text += f"📝 Заметка: {record['note']}\n"
             data_text += "\n"
@@ -447,15 +577,15 @@ async def handle_help_button(message: Message):
             "Я могу помочь вам отслеживать данные о фертильности с использованием симптотермального метода.\n\n"
             "Доступные команды:\n"
             "🌡 Добавить температуру - Записать утреннюю базальную температуру тела\n"
-            "💧 Добавить слизь - Отслеживать изменения цервикальной слизи\n"
-            "🩸 Добавить менструацию - Записать менструальный поток\n"
+            "💧 Выделения - Отслеживать выделения и менструацию\n"
+            "🔹 Шейка матки - Записать положение шейки матки\n"
             "📝 Добавить заметку - Добавить другие наблюдения\n"
             "📊 Просмотр данных - Посмотреть все данные вашего текущего цикла\n"
             "🔄 Новый цикл - Начать новый цикл\n"
             "ℹ️ Помощь - Показать эту справку\n\n"
             "Симптотермальный метод помогает определить ваше фертильное окно путем отслеживания:\n"
             "1. Базальной температуры тела (измеряется каждое утро)\n"
-            "2. Наблюдений за цервикальной слизью\n"
+            "2. Наблюдений за выделениями\n"
             "3. Положения шейки матки (опционально)"
         )
         await message.answer(help_text, reply_markup=get_main_keyboard())

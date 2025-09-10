@@ -57,12 +57,23 @@ class DatabaseHandler:
                     menstruation_type VARCHAR(50),
                     cervical_position VARCHAR(50),
                     note TEXT,
+                    abdominal_pain BOOLEAN DEFAULT FALSE,
+                    breast_tenderness BOOLEAN DEFAULT FALSE,
+                    intercourse BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES tg_users (user_id) ON DELETE CASCADE,
                     UNIQUE(user_id, record_date)
                 )
             ''')
+            
+            # Добавление новых полей для существующих таблиц (миграция)
+            try:
+                await connection.execute('ALTER TABLE records ADD COLUMN IF NOT EXISTS abdominal_pain BOOLEAN DEFAULT FALSE')
+                await connection.execute('ALTER TABLE records ADD COLUMN IF NOT EXISTS breast_tenderness BOOLEAN DEFAULT FALSE')
+                await connection.execute('ALTER TABLE records ADD COLUMN IF NOT EXISTS intercourse BOOLEAN DEFAULT FALSE')
+            except Exception as migration_error:
+                logging.warning(f"Миграция не требуется или уже выполнена: {migration_error}")
             
             # Создание индексов для лучшей производительности
             await connection.execute('''
@@ -110,7 +121,9 @@ class DatabaseHandler:
     
     async def create_record(self, user_id: int, record_date: str, temperature: Optional[float] = None,
                            mucus_type: Optional[str] = None, menstruation_type: Optional[str] = None,
-                           cervical_position: Optional[str] = None, note: Optional[str] = None) -> bool:
+                           cervical_position: Optional[str] = None, note: Optional[str] = None,
+                           abdominal_pain: Optional[bool] = None, breast_tenderness: Optional[bool] = None,
+                           intercourse: Optional[bool] = None) -> bool:
         """Создание или обновление записи для пользователя"""
         try:
             logging.debug(f"Creating record for user {user_id} with date {record_date} (type: {type(record_date)})")
@@ -129,8 +142,9 @@ class DatabaseHandler:
                 await connection.execute('''
                     INSERT INTO records (
                         user_id, record_date, temperature, mucus_type, 
-                        menstruation_type, cervical_position, note
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        menstruation_type, cervical_position, note,
+                        abdominal_pain, breast_tenderness, intercourse
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                     ON CONFLICT (user_id, record_date)
                     DO UPDATE SET
                         temperature = EXCLUDED.temperature,
@@ -138,8 +152,12 @@ class DatabaseHandler:
                         menstruation_type = EXCLUDED.menstruation_type,
                         cervical_position = EXCLUDED.cervical_position,
                         note = EXCLUDED.note,
+                        abdominal_pain = EXCLUDED.abdominal_pain,
+                        breast_tenderness = EXCLUDED.breast_tenderness,
+                        intercourse = EXCLUDED.intercourse,
                         updated_at = CURRENT_TIMESTAMP
-                ''', user_id, record_date_obj, temperature, mucus_type, menstruation_type, cervical_position, note)
+                ''', user_id, record_date_obj, temperature, mucus_type, menstruation_type, cervical_position, note,
+                     abdominal_pain, breast_tenderness, intercourse)
                 logging.debug("Record created/updated successfully")
                 return True
         except Exception as e:
@@ -154,7 +172,8 @@ class DatabaseHandler:
             async with self.pool.acquire() as connection:
                 rows = await connection.fetch('''
                     SELECT id, user_id, record_date, temperature, mucus_type, 
-                           menstruation_type, cervical_position, note, created_at, updated_at
+                           menstruation_type, cervical_position, note, created_at, updated_at,
+                           abdominal_pain, breast_tenderness, intercourse
                     FROM records 
                     WHERE user_id = $1 
                     ORDER BY record_date DESC 
@@ -183,7 +202,8 @@ class DatabaseHandler:
             async with self.pool.acquire() as connection:
                 row = await connection.fetchrow('''
                     SELECT id, user_id, record_date, temperature, mucus_type, 
-                           menstruation_type, cervical_position, note, created_at, updated_at
+                           menstruation_type, cervical_position, note, created_at, updated_at,
+                           abdominal_pain, breast_tenderness, intercourse
                     FROM records 
                     WHERE user_id = $1 AND record_date = $2
                 ''', user_id, record_date_obj)
