@@ -1,0 +1,11 @@
+# Зависимости проекта Telegram бота
+aiogram==3.20.0
+python-dotenv==1.1.0
+python-telegram-bot==21.4
+asyncpg==0.30.0
+
+# Дополнительные зависимости для работы с Excel и графиками
+pandas==2.1.4
+openpyxl==3.1.2
+matplotlib==3.8.2
+numpy==1.26.2
