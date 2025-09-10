@@ -1,7 +1,7 @@
 # fertility_tracker_bot.py
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 import asyncio
@@ -338,7 +338,7 @@ async def handle_cervix_button(message: Message):
         logging.error(f"Ошибка в обработчике кнопки шейки матки: {e}")
 
 # Обработчик выбора позиции шейки матки (первый уровень)
-@dp.callback_query(lambda c: c.data.startswith("cervix_"))
+@dp.callback_query(lambda c: c.data.startswith("cervix_") and not c.data.startswith("cervix_state_"))
 async def handle_cervix_position_selection(callback_query: CallbackQuery):
     try:
         position = callback_query.data.split("_")[1]  # low или high
@@ -355,6 +355,12 @@ async def handle_cervix_position_selection(callback_query: CallbackQuery):
             reply_markup=builder.as_markup()
         )
         await callback_query.answer()
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            # Сообщение не изменилось - это нормально, просто отвечаем на callback
+            await callback_query.answer()
+        else:
+            logging.error(f"Telegram API ошибка при обработке выбора позиции шейки матки: {e}")
     except TelegramForbiddenError:
         logging.warning(f"Пользователь {callback_query.from_user.id} заблокировал бота")
     except Exception as e:
@@ -418,6 +424,12 @@ async def handle_cervix_state_selection(callback_query: CallbackQuery):
             f"✅ Шейка матки '{position_text} {state_text}' записана на {today_display}"
         )
         await callback_query.answer()
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            # Сообщение не изменилось - это нормально, просто отвечаем на callback
+            await callback_query.answer()
+        else:
+            logging.error(f"Telegram API ошибка при обработке выбора состояния шейки матки: {e}")
     except TelegramForbiddenError:
         logging.warning(f"Пользователь {callback_query.from_user.id} заблокировал бота")
     except Exception as e:
