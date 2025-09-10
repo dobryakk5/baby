@@ -13,6 +13,7 @@ def get_main_keyboard_with_excel():
     builder.button(text="🌡 Добавить температуру")
     builder.button(text="💧 Выделения")
     builder.button(text="🔹 Шейка матки")
+    builder.button(text="⚠️ Нарушения")
     builder.button(text="📝 Добавить заметку")
     builder.button(text="📊 Просмотр данных")
     builder.button(text="📈 Мой график")  # Новая кнопка графики

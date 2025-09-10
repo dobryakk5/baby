@@ -151,7 +151,11 @@ class ExcelDataHandler:
                         mucus_type=None,  # В Excel таблице нет явного поля для слизи
                         menstruation_type=None,  # В Excel таблице нет явного поля для менструации
                         cervical_position=None,  # В Excel таблице нет явного поля для позиции шейки матки
-                        note=combined_note
+                        note=combined_note,
+                        abdominal_pain=None,
+                        breast_tenderness=None,
+                        intercourse=None,
+                        disruptions=None
                     )
                     if success:
                         success_count += 1

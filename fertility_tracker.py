@@ -21,6 +21,17 @@ API_TOKEN = os.getenv('API_TOKEN')
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
+# Импорт дополнительных модулей
+try:
+    from fertility_excel_bot_integration import register_excel_handlers
+    from fertility_chart_bot_integration import register_chart_handlers
+    EXCEL_AVAILABLE = True
+    CHARTS_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Модули Excel/графиков не доступны: {e}")
+    EXCEL_AVAILABLE = False
+    CHARTS_AVAILABLE = False
+
 # Функция для форматирования даты в формат DD.MM.YY
 def format_date(date_str):
     """Форматирование даты из YYYY-MM-DD в DD.MM.YY"""
@@ -46,8 +57,12 @@ def get_main_keyboard():
     builder.button(text="🌡 Добавить температуру")
     builder.button(text="💧 Выделения")
     builder.button(text="🔹 Шейка матки")
+    builder.button(text="⚠️ Нарушения")
     builder.button(text="📝 Добавить заметку")
     builder.button(text="📊 Просмотр данных")
+    builder.button(text="📈 Мой график")
+    builder.button(text="📊 Excel импорт/экспорт")
+    builder.button(text="📤 Экспорт в Excel")
     builder.button(text="🔄 Новый цикл")
     builder.button(text="ℹ️ Помощь")
     builder.adjust(2)
@@ -157,7 +172,8 @@ async def handle_temperature_input(message: Message):
                         note=record.get('note'),
                         abdominal_pain=record.get('abdominal_pain'),
                         breast_tenderness=record.get('breast_tenderness'),
-                        intercourse=record.get('intercourse')
+                        intercourse=record.get('intercourse'),
+                        disruptions=record.get('disruptions')
                     )
                 else:
                     logging.debug(f"Creating new record for user {user_id}")
@@ -248,7 +264,8 @@ async def handle_discharge_selection(callback_query: CallbackQuery):
                     note=record.get('note'),
                     abdominal_pain=record.get('abdominal_pain'),
                     breast_tenderness=record.get('breast_tenderness'),
-                    intercourse=record.get('intercourse')
+                    intercourse=record.get('intercourse'),
+                    disruptions=record.get('disruptions')
                 )
             else:
                 logging.debug(f"Creating new record for user {user_id}")
@@ -301,7 +318,8 @@ async def handle_menstruation_selection(callback_query: CallbackQuery):
                 note=record.get('note'),
                 abdominal_pain=record.get('abdominal_pain'),
                 breast_tenderness=record.get('breast_tenderness'),
-                intercourse=record.get('intercourse')
+                intercourse=record.get('intercourse'),
+                disruptions=record.get('disruptions')
             )
         else:
             logging.debug(f"Creating new record for user {user_id}")
@@ -409,7 +427,11 @@ async def handle_cervix_state_selection(callback_query: CallbackQuery):
                 mucus_type=record.get('mucus_type'),
                 menstruation_type=record.get('menstruation_type'),
                 cervical_position=cervical_position_code,
-                note=record.get('note')
+                note=record.get('note'),
+                abdominal_pain=record.get('abdominal_pain'),
+                breast_tenderness=record.get('breast_tenderness'),
+                intercourse=record.get('intercourse'),
+                disruptions=record.get('disruptions')
             )
         else:
             logging.debug(f"Creating new record for user {user_id}")
@@ -434,6 +456,122 @@ async def handle_cervix_state_selection(callback_query: CallbackQuery):
         logging.warning(f"Пользователь {callback_query.from_user.id} заблокировал бота")
     except Exception as e:
         logging.error(f"Ошибка при обработке выбора состояния шейки матки: {e}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
+
+# Обработчик кнопки клавиатуры для нарушений
+@dp.message(F.text == "⚠️ Нарушения")
+async def handle_disruptions_button(message: Message):
+    try:
+        # Создание инлайн-клавиатуры для типов нарушений из таблицы
+        builder = InlineKeyboardBuilder()
+        
+        # Список нарушений из таблицы
+        disruptions_list = [
+            ("Новый термометр", "new_thermometer"),
+            ("Позже", "later"),
+            ("Раньше", "earlier"),
+            ("Плохое самочувствие", "poor_feeling"),
+            ("Беспокойная ночь", "restless_night"),
+            ("Дорога", "travel"),
+            ("Отпуск", "vacation"),
+            ("Цистит", "cystitis"),
+            ("Молочница", "thrush"),
+            ("Лекарства", "medication"),
+            ("Стресс", "stress")
+        ]
+        
+        for disruption_name, disruption_code in disruptions_list:
+            builder.button(text=disruption_name, callback_data=f"disruption_{disruption_code}")
+        
+        builder.adjust(2)  # По 2 кнопки в ряд
+        
+        await message.answer("Выберите нарушения (можно выбрать несколько):", reply_markup=builder.as_markup())
+    except TelegramForbiddenError:
+        logging.warning(f"Пользователь {message.from_user.id} заблокировал бота")
+    except Exception as e:
+        logging.error(f"Ошибка в обработчике кнопки нарушений: {e}")
+
+# Обработчик выбора нарушений
+@dp.callback_query(lambda c: c.data.startswith("disruption_"))
+async def handle_disruption_selection(callback_query: CallbackQuery):
+    try:
+        user_id = callback_query.from_user.id
+        disruption_code = callback_query.data.split("_", 1)[1]  # Получаем код нарушения
+        
+        # Словарь для перевода кодов в названия
+        disruption_names = {
+            "new_thermometer": "Новый термометр",
+            "later": "Позже",
+            "earlier": "Раньше", 
+            "poor_feeling": "Плохое самочувствие",
+            "restless_night": "Беспокойная ночь",
+            "travel": "Дорога",
+            "vacation": "Отпуск",
+            "cystitis": "Цистит",
+            "thrush": "Молочница",
+            "medication": "Лекарства",
+            "stress": "Стресс"
+        }
+        
+        disruption_name = disruption_names.get(disruption_code, disruption_code)
+        
+        today_db = get_today_db_format()  # Формат для БД
+        today_display = get_today_display_format()  # Формат для отображения
+        logging.debug(f"Processing disruption selection for user {user_id} on date {today_db}")
+        
+        # Получение существующей записи или создание новой
+        record = await db.get_record_by_date(user_id, today_db)
+        
+        # Получаем текущий список нарушений
+        current_disruptions = []
+        if record and record.get('disruptions'):
+            import json
+            if isinstance(record['disruptions'], str):
+                current_disruptions = json.loads(record['disruptions'])
+            elif isinstance(record['disruptions'], list):
+                current_disruptions = record['disruptions']
+        
+        # Добавляем новое нарушение, если его еще нет
+        if disruption_name not in current_disruptions:
+            current_disruptions.append(disruption_name)
+        
+        # Подготовка параметров для обновления
+        update_params = {
+            "user_id": user_id,
+            "record_date": today_db,
+            "temperature": record.get('temperature') if record else None,
+            "mucus_type": record.get('mucus_type') if record else None,
+            "menstruation_type": record.get('menstruation_type') if record else None,
+            "cervical_position": record.get('cervical_position') if record else None,
+            "note": record.get('note') if record else None,
+            "abdominal_pain": record.get('abdominal_pain') if record else None,
+            "breast_tenderness": record.get('breast_tenderness') if record else None,
+            "intercourse": record.get('intercourse') if record else None,
+            "disruptions": current_disruptions
+        }
+        
+        # Сохраняем в базу данных
+        await db.create_record(**update_params)
+        
+        # Формируем текст с текущими нарушениями
+        disruptions_text = ", ".join(current_disruptions) if current_disruptions else "нет"
+        
+        await callback_query.message.edit_text(
+            f"✅ Добавлено нарушение: {disruption_name}\n\n"
+            f"Текущие нарушения на {today_display}: {disruptions_text}"
+        )
+        await callback_query.answer()
+        
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            await callback_query.answer()
+        else:
+            logging.error(f"Telegram API ошибка при обработке выбора нарушения: {e}")
+    except TelegramForbiddenError:
+        logging.warning(f"Пользователь {callback_query.from_user.id} заблокировал бота")
+    except Exception as e:
+        logging.error(f"Ошибка при обработке выбора нарушения: {e}")
         import traceback
         logging.error(f"Traceback: {traceback.format_exc()}")
 
@@ -488,7 +626,8 @@ async def handle_note_selection(callback_query: CallbackQuery):
             "note": record.get('note') if record else None,
             "abdominal_pain": record.get('abdominal_pain') if record else None,
             "breast_tenderness": record.get('breast_tenderness') if record else None,
-            "intercourse": record.get('intercourse') if record else None
+            "intercourse": record.get('intercourse') if record else None,
+            "disruptions": record.get('disruptions') if record else None
         }
         
         # Обновляем конкретное поле
@@ -538,10 +677,10 @@ async def handle_view_data_button(message: Message):
             if record['cervical_position']:
                 # Декодирование позиции шейки матки
                 cervix_descriptions = {
-                    1: "высоко открыта",
-                    2: "высоко закрыта", 
-                    3: "низко открыта",
-                    4: "низко закрыта"
+                    1: "высоко / открыта",
+                    2: "высоко / закрыта", 
+                    3: "низко / открыта",
+                    4: "низко / закрыта"
                 }
                 cervix_text = cervix_descriptions.get(record['cervical_position'], f"код {record['cervical_position']}")
                 data_text += f"🔹 Шейка матки: {cervix_text}\n"
@@ -552,6 +691,17 @@ async def handle_view_data_button(message: Message):
                 data_text += f"🤱 Напряжение в груди\n"
             if record.get('intercourse'):
                 data_text += f"💕 Супружеская близость\n"
+            # Отображение нарушений
+            if record.get('disruptions'):
+                try:
+                    import json
+                    disruptions_list = json.loads(record['disruptions'])
+                    if disruptions_list:
+                        disruptions_text = ", ".join(disruptions_list)
+                        data_text += f"⚠️ Нарушения: {disruptions_text}\n"
+                except (json.JSONDecodeError, TypeError):
+                    # Если данные повреждены, просто не показываем нарушения
+                    pass
             if record['note']:
                 data_text += f"📝 Заметка: {record['note']}\n"
             data_text += "\n"
@@ -650,11 +800,20 @@ async def on_shutdown():
         logging.error(f"Ошибка при закрытии подключения к базе данных: {e}")
 
 async def main():
+    # Регистрация дополнительных обработчиков
+    if EXCEL_AVAILABLE:
+        register_excel_handlers(dp)
+        logging.info("Обработчики Excel зарегистрированы")
+    
+    if CHARTS_AVAILABLE:
+        register_chart_handlers(dp)
+        logging.info("Обработчики графиков зарегистрированы")
+    
     # Регистрация обработчиков запуска и завершения работы
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
     
-    logging.info("Запуск бота для отслеживания фертильности...")
+    logging.info("Запуск бота для отслеживания фертильности с поддержкой Excel и графиков...")
     try:
         await dp.start_polling(bot)
     except TelegramForbiddenError as e:

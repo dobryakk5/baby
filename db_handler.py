@@ -60,6 +60,7 @@ class DatabaseHandler:
                     abdominal_pain BOOLEAN DEFAULT FALSE,
                     breast_tenderness BOOLEAN DEFAULT FALSE,
                     intercourse BOOLEAN DEFAULT FALSE,
+                    disruptions JSONB DEFAULT '[]'::jsonb,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES tg_users (user_id) ON DELETE CASCADE,
@@ -72,6 +73,7 @@ class DatabaseHandler:
                 await connection.execute('ALTER TABLE records ADD COLUMN IF NOT EXISTS abdominal_pain BOOLEAN DEFAULT FALSE')
                 await connection.execute('ALTER TABLE records ADD COLUMN IF NOT EXISTS breast_tenderness BOOLEAN DEFAULT FALSE')
                 await connection.execute('ALTER TABLE records ADD COLUMN IF NOT EXISTS intercourse BOOLEAN DEFAULT FALSE')
+                await connection.execute("ALTER TABLE records ADD COLUMN IF NOT EXISTS disruptions JSONB DEFAULT '[]'::jsonb")
             except Exception as migration_error:
                 logging.warning(f"Миграция не требуется или уже выполнена: {migration_error}")
             
@@ -123,7 +125,7 @@ class DatabaseHandler:
                            mucus_type: Optional[str] = None, menstruation_type: Optional[str] = None,
                            cervical_position: Optional[str] = None, note: Optional[str] = None,
                            abdominal_pain: Optional[bool] = None, breast_tenderness: Optional[bool] = None,
-                           intercourse: Optional[bool] = None) -> bool:
+                           intercourse: Optional[bool] = None, disruptions: Optional[list] = None) -> bool:
         """Создание или обновление записи для пользователя"""
         try:
             logging.debug(f"Creating record for user {user_id} with date {record_date} (type: {type(record_date)})")
@@ -139,12 +141,16 @@ class DatabaseHandler:
             logging.debug(f"Executing database query with user_id={user_id}, record_date={record_date_obj}")
             
             async with self.pool.acquire() as connection:
+                # Конвертация списка нарушений в JSON для PostgreSQL
+                import json
+                disruptions_json = json.dumps(disruptions or [])
+                
                 await connection.execute('''
                     INSERT INTO records (
                         user_id, record_date, temperature, mucus_type, 
                         menstruation_type, cervical_position, note,
-                        abdominal_pain, breast_tenderness, intercourse
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                        abdominal_pain, breast_tenderness, intercourse, disruptions
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                     ON CONFLICT (user_id, record_date)
                     DO UPDATE SET
                         temperature = EXCLUDED.temperature,
@@ -155,9 +161,10 @@ class DatabaseHandler:
                         abdominal_pain = EXCLUDED.abdominal_pain,
                         breast_tenderness = EXCLUDED.breast_tenderness,
                         intercourse = EXCLUDED.intercourse,
+                        disruptions = EXCLUDED.disruptions,
                         updated_at = CURRENT_TIMESTAMP
                 ''', user_id, record_date_obj, temperature, mucus_type, menstruation_type, cervical_position, note,
-                     abdominal_pain, breast_tenderness, intercourse)
+                     abdominal_pain, breast_tenderness, intercourse, disruptions_json)
                 logging.debug("Record created/updated successfully")
                 return True
         except Exception as e:
@@ -173,7 +180,7 @@ class DatabaseHandler:
                 rows = await connection.fetch('''
                     SELECT id, user_id, record_date, temperature, mucus_type, 
                            menstruation_type, cervical_position, note, created_at, updated_at,
-                           abdominal_pain, breast_tenderness, intercourse
+                           abdominal_pain, breast_tenderness, intercourse, disruptions
                     FROM records 
                     WHERE user_id = $1 
                     ORDER BY record_date DESC 
@@ -203,7 +210,7 @@ class DatabaseHandler:
                 row = await connection.fetchrow('''
                     SELECT id, user_id, record_date, temperature, mucus_type, 
                            menstruation_type, cervical_position, note, created_at, updated_at,
-                           abdominal_pain, breast_tenderness, intercourse
+                           abdominal_pain, breast_tenderness, intercourse, disruptions
                     FROM records 
                     WHERE user_id = $1 AND record_date = $2
                 ''', user_id, record_date_obj)
