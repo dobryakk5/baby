@@ -21,15 +21,12 @@ API_TOKEN = os.getenv('API_TOKEN')
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# Импорт дополнительных модулей
+# Импорт модуля графиков
 try:
-    from fertility_excel_bot_integration import register_excel_handlers
     from fertility_chart_bot_integration import register_chart_handlers
-    EXCEL_AVAILABLE = True
     CHARTS_AVAILABLE = True
 except ImportError as e:
-    logging.warning(f"Модули Excel/графиков не доступны: {e}")
-    EXCEL_AVAILABLE = False
+    logging.warning(f"Модуль графиков не доступен: {e}")
     CHARTS_AVAILABLE = False
 
 # Функция для форматирования даты в формат DD.MM.YY
@@ -60,9 +57,7 @@ def get_main_keyboard():
     builder.button(text="⚠️ Нарушения")
     builder.button(text="📝 Добавить заметку")
     builder.button(text="📊 Просмотр данных")
-    builder.button(text="📈 Мой график")
-    builder.button(text="📊 Excel импорт/экспорт")
-    builder.button(text="📤 Экспорт в Excel")
+    builder.button(text="📈 График")
     builder.button(text="🔄 Новый цикл")
     builder.button(text="ℹ️ Помощь")
     builder.adjust(2)
@@ -800,11 +795,7 @@ async def on_shutdown():
         logging.error(f"Ошибка при закрытии подключения к базе данных: {e}")
 
 async def main():
-    # Регистрация дополнительных обработчиков
-    if EXCEL_AVAILABLE:
-        register_excel_handlers(dp)
-        logging.info("Обработчики Excel зарегистрированы")
-    
+    # Регистрация обработчиков графиков
     if CHARTS_AVAILABLE:
         register_chart_handlers(dp)
         logging.info("Обработчики графиков зарегистрированы")
@@ -813,7 +804,7 @@ async def main():
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
     
-    logging.info("Запуск бота для отслеживания фертильности с поддержкой Excel и графиков...")
+    logging.info("Запуск бота для отслеживания фертильности с поддержкой графиков...")
     try:
         await dp.start_polling(bot)
     except TelegramForbiddenError as e:
